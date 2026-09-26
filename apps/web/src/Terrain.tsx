@@ -16,11 +16,12 @@ export interface TerrainInfo { bucket: number; k0: number; cols: number; times: 
  */
 const rgb = (c: readonly number[]) => `rgb(${c.map((x) => Math.round(x * 255)).join(',')})`
 
-export function Terrain({ stream, onSample, onWhales, showWhales = true }: { stream: Stream; onSample?: (s: TimelineSample) => void; onWhales?: (w: Whale[]) => void; showWhales?: boolean }) {
+export function Terrain({ stream, onSample, onWhales, showWhales = true, endBin = null }: { endBin?: number | null; stream: Stream; onSample?: (s: TimelineSample) => void; onWhales?: (w: Whale[]) => void; showWhales?: boolean }) {
   const [whales, setWhales] = useState<{ w: Whale; x: number; y: number; z: number }[]>([])
   const lastWhale = useRef(0)
   const group = useRef<THREE.Group>(null)
   const seen = useRef(-1)
+  const lastEnd = useRef<number | null>(null)
   const ref = useRef(1)
   const scroll = useRef(0)
   const lastRowTime = useRef(0)
@@ -60,12 +61,14 @@ export function Terrain({ stream, onSample, onWhales, showWhales = true }: { str
 
   useFrame((_, delta) => {
     // ease the terrain toward the viewer's side between updates so time flows smoothly instead of in 500 ms steps
+    if (endBin !== null) scroll.current = 0 // no easing while replaying
     scroll.current *= Math.pow(0.001, delta) // fast exponential decay
     if (group.current) group.current.position.z = scroll.current
 
-    if (seen.current === stream.tick.current) return
+    if (seen.current === stream.tick.current && lastEnd.current === endBin) return
     seen.current = stream.tick.current
-    const s = stream.timeline.sample()
+    lastEnd.current = endBin
+    const s = stream.timeline.sample(endBin ?? undefined)
     if (!s) return
     if (cols.current !== s.cols) build(s)
 

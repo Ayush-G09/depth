@@ -165,4 +165,27 @@ describe('Timeline', () => {
       expect(Array.from(s.known.slice(COLS, 2 * COLS))).toEqual([0, 0, 0, 0, 1, 1, 1, 1])
     })
   })
+
+  describe('replay', () => {
+    it('remembers more than it shows and can be sampled at an earlier step', () => {
+      const t = new Timeline({ slices: 3, keep: 10, intervalMs: STEP })
+      for (let i = 0; i < 8; i++) t.push(frame(T0 + i * STEP, { bid: [[1, i + 1]] }))
+      expect(t.range()).toEqual({ oldest: 1_000_000, newest: 1_000_007 })
+      const past = t.sample(1_000_004)!
+      expect(past.times[2]).toBe(T0 + 4 * STEP)
+      expect([past.bids[1], past.bids[COLS + 1], past.bids[2 * COLS + 1]]).toEqual([3, 4, 5])
+      expect(t.sample()!.bids[2 * COLS + 1]).toBe(8) // live is unchanged
+    })
+    it('forgets steps beyond keep', () => {
+      const t = new Timeline({ slices: 2, keep: 4, intervalMs: STEP })
+      for (let i = 0; i < 20; i++) t.push(frame(T0 + i * STEP))
+      expect(t.size).toBeLessThanOrEqual(4)
+    })
+    it('asking for the future gives live, and a time before anything gives nothing', () => {
+      const t = new Timeline({ slices: 2, keep: 4, intervalMs: STEP })
+      t.push(frame(T0))
+      expect(t.sample(1e9)!.times[1]).toBe(T0)
+      expect(t.sample(1_000_000 - 50)).toBeNull()
+    })
+  })
 })

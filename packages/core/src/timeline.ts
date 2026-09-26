@@ -3,6 +3,8 @@ import type { BookFrame } from './types'
 export interface TimelineOptions {
   /** Rows kept (time steps). */
   slices: number
+  /** Time steps remembered for replay (default: just `slices`). */
+  keep?: number
   /** Milliseconds of history each row covers. */
   intervalMs: number
 }
@@ -44,6 +46,15 @@ export class Timeline {
 
   get size() { return this.bins.size }
   get currentBucket() { return this.bucket }
+  private get keep() { return Math.max(this.opts.keep ?? 0, this.opts.slices) }
+
+  /** The oldest and newest time steps (as step numbers) that can be replayed, or null if there is nothing yet. */
+  range(): { oldest: number; newest: number } | null {
+    if (this.newest === -Infinity) return null
+    let oldest = this.newest
+    for (const k of this.bins.keys()) if (k < oldest) oldest = k
+    return { oldest, newest: this.newest }
+  }
 
   reset() {
     this.bins.clear()
@@ -61,18 +72,22 @@ export class Timeline {
     this.cols = f.bids.length
 
     const bin = Math.floor(f.ts / this.opts.intervalMs)
-    if (bin < this.newest - this.opts.slices) return false // older than anything we keep
+    if (bin < this.newest - this.keep) return false // older than anything we keep
     const have = this.bins.get(bin)
     if (have && have.ts > f.ts) return false // an older frame arriving late must not replace a newer one
     this.bins.set(bin, f)
     if (bin > this.newest) this.newest = bin
-    for (const k of this.bins.keys()) if (k <= this.newest - this.opts.slices) this.bins.delete(k)
+    for (const k of this.bins.keys()) if (k <= this.newest - this.keep) this.bins.delete(k)
     return true
   }
 
-  /** Build the grid. Returns null until there is a frame. */
-  sample(): TimelineSample | null {
+  /**
+   * Build the grid ending at time step `endBin` (default: the newest, i.e. live). Returns null until there is a frame.
+   * Rewinding shows exactly what was recorded then; steps we never received stay unknown.
+   */
+  sample(endBin?: number): TimelineSample | null {
     if (this.newest === -Infinity) return null
+    const end = endBin === undefined ? this.newest : Math.min(endBin, this.newest)
     const { slices, intervalMs } = this.opts
     const cols = this.cols
     const bids = new Float32Array(slices * cols)
@@ -80,11 +95,13 @@ export class Timeline {
     const known = new Uint8Array(slices * cols)
     const mids: number[] = new Array(slices).fill(NaN)
     const times: number[] = new Array(slices)
-    const newestFrame = this.bins.get(this.newest)!
-    const k0 = newestFrame.k0
+    let anchor = this.bins.get(end)
+    for (let b = end - 1; !anchor && b > end - slices; b--) anchor = this.bins.get(b)
+    if (!anchor) return null
+    const k0 = anchor.k0
 
     for (let r = 0; r < slices; r++) {
-      const bin = this.newest - (slices - 1 - r)
+      const bin = end - (slices - 1 - r)
       times[r] = bin * intervalMs
       const f = this.bins.get(bin)
       if (!f) continue

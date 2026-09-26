@@ -6,6 +6,8 @@ export type Link = 'connecting' | 'open' | 'closed'
 
 export const SLICES = 240
 export const STEP_MS = 500
+/** How much history is kept for replay: 10 minutes. */
+export const KEEP = 1200
 
 export interface Stream {
   /** the websocket to the server */
@@ -28,7 +30,7 @@ const wsBase = () => {
 
 /** Connects to the depth server for one market, reconnecting on its own, and keeps a Timeline of what it sends. */
 export function useBookStream(symbol: string): Stream {
-  const timeline = useRef(new Timeline({ slices: SLICES, intervalMs: STEP_MS }))
+  const timeline = useRef(new Timeline({ slices: SLICES, keep: KEEP, intervalMs: STEP_MS }))
   const tick = useRef(0)
   const [link, setLink] = useState<Link>('connecting')
   const [frame, setFrame] = useState<BookFrame | null>(null)

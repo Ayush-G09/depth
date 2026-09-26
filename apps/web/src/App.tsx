@@ -5,7 +5,7 @@ import * as THREE from 'three'
 import type { TimelineSample, Whale } from '@depth/core'
 import { Terrain } from './Terrain'
 import { DEPTH, WIDTH, priceOfCol, xOfCol, zOfRow } from './terrainMath'
-import { SLICES, STEP_MS, useBookStream } from './useBookStream'
+import { KEEP, SLICES, STEP_MS, useBookStream } from './useBookStream'
 
 const DEFAULT_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT']
 
@@ -57,6 +57,10 @@ export function App() {
   const [info, setInfo] = useState<{ bucket: number; k0: number; cols: number } | null>(null)
   const lastInfo = useRef(0)
   const [whales, setWhales] = useState<Whale[]>([])
+  // Replay: null means live. Otherwise the time step the view ends at, which stays fixed while paused.
+  const [cursor, setCursor] = useState<number | null>(null)
+  const [playing, setPlaying] = useState(false)
+  const [span, setSpan] = useState<{ oldest: number; newest: number } | null>(null)
 
   useEffect(() => {
     fetch('/api/symbols').then((r) => r.json()).then((d: { symbols: string[] }) => { if (d.symbols?.length) setSymbols(d.symbols) }).catch(() => {})
@@ -69,6 +73,25 @@ export function App() {
     lastInfo.current = now
     setInfo({ bucket: s.bucket, k0: s.k0, cols: s.cols })
   }, [])
+  // the span only changes when a step passes, which is about every half second
+  useEffect(() => { const t = setInterval(() => setSpan(stream.timeline.range()), 500); return () => clearInterval(t) }, [stream.timeline])
+  useEffect(() => { setCursor(null); setPlaying(false) }, [symbol])
+  // playing forward at real speed; catching up with the present goes back to live
+  useEffect(() => {
+    if (!playing || cursor === null) return
+    const t = setInterval(() => setCursor((c) => {
+      const newest = stream.timeline.range()?.newest
+      if (c === null || newest === undefined || c + 1 >= newest) { setPlaying(false); return null }
+      return c + 1
+    }), STEP_MS)
+    return () => clearInterval(t)
+  }, [playing, cursor === null, stream.timeline])
+  const replaying = cursor !== null
+  const oldest = span ? Math.max(span.oldest, span.newest - KEEP) + 10 : 0 // earliest point worth showing (older rows of the view stay unknown)
+  const canRewind = !!span && span.newest - oldest >= 20
+  const timeLabel = (bin: number) => new Date(bin * STEP_MS).toLocaleTimeString([], { hour12: false })
+  const rewind = (bin: number) => { if (span) setCursor(Math.max(oldest, Math.min(bin, span.newest))) }
+
   useEffect(() => { setInfo(null); lastInfo.current = 0 }, [symbol])
 
   const f = stream.frame
@@ -91,7 +114,7 @@ export function App() {
         <directionalLight position={[30, 60, 40]} intensity={1.4} />
         <directionalLight position={[-40, 25, -30]} intensity={0.45} color="#7c97f2" />
         <Framing />
-        <Terrain stream={stream} onSample={onSample} onWhales={setWhales} showWhales={live} />
+        <Terrain stream={stream} onSample={onSample} onWhales={setWhales} showWhales={live || replaying} endBin={cursor} />
         <Grid position={[0, -0.05, 0]} args={[WIDTH * 1.6, DEPTH * 1.6]} cellSize={5} cellThickness={0.5} cellColor="#1a2233" sectionSize={25} sectionThickness={1} sectionColor="#2a3550" fadeDistance={190} fadeStrength={1.5} infiniteGrid={false} />
         <Axes info={info} />
         <OrbitControls enableDamping dampingFactor={0.07} target={[0, 0, -4]} minDistance={22} maxDistance={190} maxPolarAngle={Math.PI * 0.485} />
@@ -136,6 +159,17 @@ export function App() {
           <div className="nums mono"><span className="g">{fmtQty(bidQty)} {base(symbol)} bids</span><span className="r">{fmtQty(askQty)} asks</span></div>
         </div>
       </aside>
+
+      <div className={`replay panel ${replaying ? 'on' : ''}`}>
+        <button onClick={() => { if (!replaying) { if (span) { rewind(span.newest - 20); setPlaying(false) } } else setPlaying((p) => !p) }} disabled={!canRewind && !replaying} aria-label={replaying ? (playing ? 'Pause' : 'Play') : 'Rewind'}>
+          {replaying ? (playing ? '❚❚' : '▶') : '⏪'}
+        </button>
+        <input type="range" aria-label="Replay position" min={oldest} max={span?.newest ?? 0} step={1} disabled={!canRewind}
+          value={cursor ?? span?.newest ?? 0}
+          onChange={(e) => { const v = Number(e.target.value); if (span && v >= span.newest) { setCursor(null); setPlaying(false) } else { setPlaying(false); rewind(v) } }} />
+        <span className="mono when">{replaying ? `${timeLabel(cursor!)}` : 'LIVE'}</span>
+        {replaying && <button className="go" onClick={() => { setCursor(null); setPlaying(false) }}>Go live</button>}
+      </div>
 
       <footer className="legend panel">
         <span><i className="sw g" />Bids (buyers)</span>
