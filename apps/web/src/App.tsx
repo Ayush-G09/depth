@@ -7,6 +7,7 @@ import { Terrain } from './Terrain'
 import { Candles3D } from './Candles3D'
 import { useCandles } from './useCandles'
 import { apiBase } from './api'
+import { useAlerts } from './useAlerts'
 import { DEPTH, WIDTH, priceOfCol, xOfCol, zOfRow } from './terrainMath'
 import { KEEP, SLICES, STEP_MS, useBookStream } from './useBookStream'
 
@@ -107,6 +108,20 @@ export function App() {
   const f = stream.frame
   const live = stream.link === 'open' && f?.status === 'live'
   const state = live ? 'live' : stream.link !== 'open' ? 'offline' : 'syncing'
+  const alerts = useAlerts(symbol, f?.mid ?? null, whales, live && !replaying, (_s, p) => fmtPrice(p, f?.bucket ?? 0.01))
+  const [alertsOpen, setAlertsOpen] = useState(false)
+  const [priceText, setPriceText] = useState('')
+  const [alertError, setAlertError] = useState<string | null>(null)
+  const whaleOn = alerts.rules.some((r) => r.kind === 'whale' && r.symbol === symbol)
+  const mine = alerts.rules.filter((r) => r.symbol === symbol)
+  const submitPrice = (e: React.FormEvent) => {
+    e.preventDefault()
+    const v = Number(priceText.replace(/,/g, ''))
+    if (!Number.isFinite(v)) { setAlertError('Enter a price'); return }
+    const err = alerts.addPrice(v)
+    setAlertError(err)
+    if (!err) setPriceText('')
+  }
   const bidQty = f && live ? f.bids.reduce((a, b) => a + b, 0) : 0
   const askQty = f && live ? f.asks.reduce((a, b) => a + b, 0) : 0
   const share = bidQty + askQty > 0 ? bidQty / (bidQty + askQty) : 0.5
@@ -146,6 +161,26 @@ export function App() {
           {view === 'candles' && INTERVALS.map((i) => <button key={i} className={`sub ${i === interval ? 'on' : ''}`} aria-pressed={i === interval} onClick={() => setIntervalKey(i)}>{i}</button>)}
         </div>
         {view === 'candles' && candleError && candles.length === 0 && <span className="muted">Candles unavailable</span>}
+        <div className="alerts-wrap">
+          <button className={`bell ${mine.length ? 'on' : ''}`} aria-expanded={alertsOpen} onClick={() => setAlertsOpen((o) => !o)}>Alerts{mine.length ? ` · ${mine.length}` : ''}</button>
+          {alertsOpen && (
+            <div className="alerts panel" role="dialog" aria-label="Alerts">
+              <form onSubmit={submitPrice}>
+                <label>Alert me when {base(symbol)} reaches
+                  <span className="row"><input inputMode="decimal" placeholder={f?.mid ? fmtPrice(f.mid, f.bucket) : 'price'} value={priceText} onChange={(e) => setPriceText(e.target.value)} /><button type="submit">Add</button></span>
+                </label>
+                {alertError && <small className="err">{alertError}</small>}
+              </form>
+              <label className="check"><input type="checkbox" checked={whaleOn} onChange={() => alerts.toggleWhale(1_000_000)} /> New whale wall over $1M</label>
+              <ul>
+                {mine.map((r) => (
+                  <li key={r.id}><span>{r.kind === 'price' ? `${r.dir === 'above' ? '≥' : '≤'} ${fmtPrice(r.price, f?.bucket ?? 0.01)}` : `Whale walls ≥ $${(r.minUsd / 1e6).toFixed(0)}M`}</span><button aria-label="Remove alert" onClick={() => alerts.remove(r.id)}>✕</button></li>
+                ))}
+              </ul>
+              <small className="muted">Alerts live in this browser and fire only while this page is open.</small>
+            </div>
+          )}
+        </div>
         <span className={`pill ${state}`} role="status"><i />{state === 'live' ? 'Live' : state === 'syncing' ? 'Syncing order book…' : stream.link === 'connecting' ? 'Connecting…' : 'Offline, reconnecting…'}</span>
       </header>
 
@@ -188,6 +223,12 @@ export function App() {
           onChange={(e) => { const v = Number(e.target.value); if (span && v >= span.newest) { setCursor(null); setPlaying(false) } else { setPlaying(false); rewind(v) } }} />
         <span className="mono when">{replaying ? `${timeLabel(cursor!)}` : 'LIVE'}</span>
         {replaying && <button className="go" onClick={() => { setCursor(null); setPlaying(false) }}>Go live</button>}
+      </div>
+
+      <div className="toasts" aria-live="polite">
+        {alerts.toasts.map((t) => (
+          <div key={t.key} className="toast panel" role="status"><span>{t.message}</span><button aria-label="Dismiss" onClick={() => alerts.dismiss(t.key)}>✕</button></div>
+        ))}
       </div>
 
       <footer className="legend panel">

@@ -95,3 +95,21 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .views .sub { padding: 5px 8px; font-size: 12px; }
 .axis { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .replay[hidden] { display: none; }
+
+.alerts-wrap { position: relative; }
+.bell { background: transparent; border: 1px solid #2a3550; color: var(--muted); border-radius: 8px; padding: 5px 10px; font-size: 13px; cursor: pointer; }
+.bell.on { color: var(--yellow); border-color: #6b5a2a; }
+.alerts { position: absolute; top: 42px; left: 0; width: 290px; padding: 14px; z-index: 20; display: grid; gap: 10px; font-size: 13px; }
+.alerts label { display: grid; gap: 6px; }
+.alerts .row { display: flex; gap: 6px; }
+.alerts input[inputmode] { flex: 1; min-width: 0; background: #0b1020; border: 1px solid #2a3550; color: inherit; border-radius: 8px; padding: 6px 8px; }
+.alerts .row button { background: #18213a; border: 1px solid #5b73c9; color: #fff; border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+.alerts .check { display: flex; align-items: center; gap: 8px; }
+.alerts ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.alerts li { display: flex; justify-content: space-between; align-items: center; }
+.alerts li button { background: transparent; border: 0; color: var(--muted); cursor: pointer; }
+.alerts .err { color: var(--red); }
+.alerts .muted { font-size: 11px; }
+.toasts { position: absolute; top: 84px; left: 50%; transform: translateX(-50%); display: grid; gap: 8px; z-index: 30; width: min(420px, calc(100vw - 32px)); }
+.toast { display: flex; justify-content: space-between; gap: 12px; padding: 10px 14px; font-size: 13px; border-color: #6b5a2a; }
+.toast button { background: transparent; border: 0; color: var(--muted); cursor: pointer; }
