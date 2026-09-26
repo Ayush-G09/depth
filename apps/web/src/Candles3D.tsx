@@ -47,8 +47,8 @@ export function Candles3D({ candles, whales, mid, format }: { candles: Candle[];
         const col = w.side === 'bid' ? GREEN : RED
         return (
           <mesh key={`${w.side}${w.price}`} position={[0, y(w.price), 0]}>
-            <boxGeometry args={[C_WIDTH * 1.05, 0.08, 8]} />
-            <meshBasicMaterial color={col} transparent opacity={0.28} depthWrite={false} />
+            <boxGeometry args={[C_WIDTH * 1.05, 0.08, 3]} />
+            <meshBasicMaterial color={col} transparent opacity={0.4} depthWrite={false} />
           </mesh>
         )
       })}
@@ -61,8 +61,8 @@ export function Candles3D({ candles, whales, mid, format }: { candles: Candle[];
       )}
 
       {ticks.map((p) => (
-        <group key={p} position={[-C_WIDTH / 2 - 3, y(p), 0]}>
-          <Html center distanceFactor={70} style={{ pointerEvents: 'none' }}>
+        <group key={p} position={[C_WIDTH / 2 + 6, y(p), 0]}>
+          <Html center distanceFactor={105} style={{ pointerEvents: 'none' }}>
             <span className="axis mono">{format(p)}</span>
           </Html>
         </group>

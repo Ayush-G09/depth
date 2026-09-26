@@ -48,7 +48,7 @@ function Framing({ view }: { view: View }) {
   useEffect(() => {
     const aspect = size.width / size.height
     const back = aspect < 1.2 ? Math.min(2.4, 1.2 / Math.max(aspect, 0.4)) : 1
-    if (view === 'candles') camera.position.set(28 * back, 26 * back, 92 * back)
+    if (view === 'candles') camera.position.set(18 * back, 30 * back, 104 * back)
     else camera.position.set(0, 58 * back, 92 * back)
     camera.updateProjectionMatrix()
   }, [camera, size.width, size.height, view])
