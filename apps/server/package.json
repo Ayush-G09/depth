@@ -1,0 +1,13 @@
+{
+  "name": "@depth/server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": { "@depth/core": "*", "ws": "^8.18.0" },
+  "devDependencies": { "@types/node": "^22.10.0", "@types/ws": "^8.5.13", "tsx": "^4.19.2" }
+}

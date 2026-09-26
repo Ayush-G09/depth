@@ -1,0 +1,22 @@
+# Render Blueprint: the Depth server (free plan).
+# Binance blocks some regions (notably the US), so the region is pinned to Frankfurt.
+# If snapshots still fail with HTTP 451, set BINANCE_REST=https://data-api.binance.vision
+# and BINANCE_WS=wss://data-stream.binance.vision (public market-data mirror).
+services:
+  - type: web
+    name: depth-server
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm ci
+    startCommand: npm run start -w @depth/server
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: ALLOWED_ORIGINS
+        sync: false # set to your Vercel URL, e.g. https://depth.vercel.app
+      - key: BINANCE_REST
+        value: https://api.binance.com
+      - key: BINANCE_WS
+        value: wss://stream.binance.com:9443
