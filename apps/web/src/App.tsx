@@ -4,6 +4,9 @@ import { Grid, Html, OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
 import type { TimelineSample, Whale } from '@depth/core'
 import { Terrain } from './Terrain'
+import { Candles3D } from './Candles3D'
+import { useCandles } from './useCandles'
+import { apiBase } from './api'
 import { DEPTH, WIDTH, priceOfCol, xOfCol, zOfRow } from './terrainMath'
 import { KEEP, SLICES, STEP_MS, useBookStream } from './useBookStream'
 
@@ -39,21 +42,28 @@ function Axes({ info }: { info: { bucket: number; k0: number; cols: number } | n
 }
 
 /** On a narrow (portrait) window the terrain would be cut off at the sides, so start further back. */
-function Framing() {
+function Framing({ view }: { view: View }) {
   const { camera, size } = useThree()
   useEffect(() => {
     const aspect = size.width / size.height
     const back = aspect < 1.2 ? Math.min(2.4, 1.2 / Math.max(aspect, 0.4)) : 1
-    camera.position.set(0, 58 * back, 92 * back)
+    if (view === 'candles') camera.position.set(28 * back, 26 * back, 92 * back)
+    else camera.position.set(0, 58 * back, 92 * back)
     camera.updateProjectionMatrix()
-  }, [camera, size.width, size.height])
+  }, [camera, size.width, size.height, view])
   return null
 }
 
+type View = 'terrain' | 'candles'
+const INTERVALS = ['1m', '5m', '15m']
+
 export function App() {
+  const [view, setView] = useState<View>('terrain')
+  const [interval, setIntervalKey] = useState('1m')
   const [symbols, setSymbols] = useState(DEFAULT_SYMBOLS)
   const [symbol, setSymbol] = useState(() => new URLSearchParams(location.search).get('symbol')?.toUpperCase() ?? 'BTCUSDT')
   const stream = useBookStream(symbol)
+  const { candles, error: candleError } = useCandles(symbol, interval, view === 'candles')
   const [info, setInfo] = useState<{ bucket: number; k0: number; cols: number } | null>(null)
   const lastInfo = useRef(0)
   const [whales, setWhales] = useState<Whale[]>([])
@@ -63,7 +73,7 @@ export function App() {
   const [span, setSpan] = useState<{ oldest: number; newest: number } | null>(null)
 
   useEffect(() => {
-    fetch('/api/symbols').then((r) => r.json()).then((d: { symbols: string[] }) => { if (d.symbols?.length) setSymbols(d.symbols) }).catch(() => {})
+    fetch(`${apiBase}/api/symbols`).then((r) => r.json()).then((d: { symbols: string[] }) => { if (d.symbols?.length) setSymbols(d.symbols) }).catch(() => {})
   }, [])
 
   // labels only need refreshing about once a second
@@ -113,11 +123,14 @@ export function App() {
         <ambientLight intensity={0.85} />
         <directionalLight position={[30, 60, 40]} intensity={1.4} />
         <directionalLight position={[-40, 25, -30]} intensity={0.45} color="#7c97f2" />
-        <Framing />
-        <Terrain stream={stream} onSample={onSample} onWhales={setWhales} showWhales={live || replaying} endBin={cursor} />
+        <Framing view={view} />
+        <group visible={view === 'terrain'}>
+          <Terrain stream={stream} onSample={onSample} onWhales={setWhales} showWhales={(live || replaying) && view === 'terrain'} endBin={cursor} />
+        </group>
+        {view === 'candles' && <Candles3D candles={candles} whales={live ? whales : []} mid={live ? f?.mid ?? null : null} format={(p) => fmtPrice(p, Math.max(p / 1e5, 0.01))} />}
         <Grid position={[0, -0.05, 0]} args={[WIDTH * 1.6, DEPTH * 1.6]} cellSize={5} cellThickness={0.5} cellColor="#1a2233" sectionSize={25} sectionThickness={1} sectionColor="#2a3550" fadeDistance={190} fadeStrength={1.5} infiniteGrid={false} />
-        <Axes info={info} />
-        <OrbitControls enableDamping dampingFactor={0.07} target={[0, 0, -4]} minDistance={22} maxDistance={190} maxPolarAngle={Math.PI * 0.485} />
+        {view === 'terrain' && <Axes info={info} />}
+        <OrbitControls enableDamping dampingFactor={0.07} target={view === 'candles' ? [0, 16, 0] : [0, 0, -4]} minDistance={22} maxDistance={190} maxPolarAngle={Math.PI * 0.485} />
       </Canvas>
 
       <header className="top panel">
@@ -127,6 +140,12 @@ export function App() {
             <button key={s} className={s === symbol ? 'on' : ''} aria-pressed={s === symbol} onClick={() => { setSymbol(s); history.replaceState(null, '', `?symbol=${s}`) }}>{base(s)}</button>
           ))}
         </nav>
+        <div className="views" role="group" aria-label="View">
+          <button className={view === 'terrain' ? 'on' : ''} aria-pressed={view === 'terrain'} onClick={() => setView('terrain')}>Order book</button>
+          <button className={view === 'candles' ? 'on' : ''} aria-pressed={view === 'candles'} onClick={() => setView('candles')}>Candles</button>
+          {view === 'candles' && INTERVALS.map((i) => <button key={i} className={`sub ${i === interval ? 'on' : ''}`} aria-pressed={i === interval} onClick={() => setIntervalKey(i)}>{i}</button>)}
+        </div>
+        {view === 'candles' && candleError && candles.length === 0 && <span className="muted">Candles unavailable</span>}
         <span className={`pill ${state}`} role="status"><i />{state === 'live' ? 'Live' : state === 'syncing' ? 'Syncing order book…' : stream.link === 'connecting' ? 'Connecting…' : 'Offline, reconnecting…'}</span>
       </header>
 
@@ -160,7 +179,7 @@ export function App() {
         </div>
       </aside>
 
-      <div className={`replay panel ${replaying ? 'on' : ''}`}>
+      <div className={`replay panel ${replaying ? 'on' : ''}`} hidden={view !== 'terrain'}>
         <button onClick={() => { if (!replaying) { if (span) { rewind(span.newest - 20); setPlaying(false) } } else setPlaying((p) => !p) }} disabled={!canRewind && !replaying} aria-label={replaying ? (playing ? 'Pause' : 'Play') : 'Rewind'}>
           {replaying ? (playing ? '❚❚' : '▶') : '⏪'}
         </button>

@@ -7,6 +7,10 @@ import type { ServerConfig } from './config'
 import type { Exchange } from './exchange'
 import type { FeedOptions, SnapshotGate } from './feed'
 import { Hub } from './hub'
+import type { Candle } from '@depth/core'
+
+const INTERVALS = ['1m', '5m', '15m', '1h']
+const CANDLE_CACHE_MS = 10_000
 
 export interface DepthServer {
   http: Server
@@ -19,6 +23,18 @@ export interface DepthServer {
 export function createDepthServer(cfg: ServerConfig, exchange: Exchange, gate: SnapshotGate, feedTiming: Partial<FeedOptions> = {}): DepthServer {
   const hub = new Hub(exchange, gate, cfg, feedTiming)
 
+  // Candles are shared by everyone looking at a market, so ask the exchange at most once per few seconds for each.
+  const cache = new Map<string, { at: number; data: Promise<Candle[]> }>()
+  const candlesFor = (symbol: string, interval: string) => {
+    const key = `${symbol}:${interval}`
+    const hit = cache.get(key)
+    if (hit && Date.now() - hit.at < CANDLE_CACHE_MS) return hit.data
+    const data = exchange.fetchCandles(symbol, interval, 120)
+    cache.set(key, { at: Date.now(), data })
+    data.catch(() => { if (cache.get(key)?.data === data) cache.delete(key) }) // do not remember a failure
+    return data
+  }
+
   const http = createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost')
     res.setHeader('access-control-allow-origin', '*')
@@ -29,6 +45,17 @@ export function createDepthServer(cfg: ServerConfig, exchange: Exchange, gate: S
     if (url.pathname === '/api/symbols') {
       res.setHeader('content-type', 'application/json')
       return res.end(JSON.stringify({ symbols: Object.keys(SYMBOLS) }))
+    }
+    if (url.pathname === '/api/candles') {
+      const symbol = (url.searchParams.get('symbol') ?? '').toUpperCase()
+      const interval = url.searchParams.get('interval') ?? '1m'
+      res.setHeader('content-type', 'application/json')
+      if (!hub.isKnown(symbol) || !INTERVALS.includes(interval)) { res.statusCode = 400; return res.end('{"error":"bad request"}') }
+      candlesFor(symbol, interval).then(
+        (candles) => res.end(JSON.stringify({ symbol, interval, candles })),
+        () => { res.statusCode = 502; res.end('{"error":"exchange unavailable"}') },
+      )
+      return
     }
     res.statusCode = 404
     res.end('not found')

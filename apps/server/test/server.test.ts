@@ -206,4 +206,30 @@ describe('Hub: slow viewers', () => {
     await waitFor(() => ok.length > 2, 3000, 'frames for the healthy viewer')
     hub.close()
   })
+
+  describe('candles endpoint', () => {
+    const get = (port: number, path: string) => fetch(`http://localhost:${port}${path}`)
+    it('returns candles for a known market, and shares one exchange call between viewers', async () => {
+      const { port, ex } = await boot()
+      const [a, b] = await Promise.all([get(port, '/api/candles?symbol=BTCUSDT&interval=1m'), get(port, '/api/candles?symbol=BTCUSDT&interval=1m')])
+      expect(a.status).toBe(200)
+      const body = (await b.json()) as { candles: unknown[] }
+      expect(body.candles.length).toBe(3)
+      expect(ex.candleCalls).toBe(1)
+    })
+    it('refuses unknown markets and intervals', async () => {
+      const { port, ex } = await boot()
+      expect((await get(port, '/api/candles?symbol=NOPE&interval=1m')).status).toBe(400)
+      expect((await get(port, '/api/candles?symbol=BTCUSDT&interval=1s')).status).toBe(400)
+      expect((await get(port, '/api/candles?symbol=BTCUSDT&interval=1m%26x')).status).toBe(400)
+      expect(ex.candleCalls).toBe(0)
+    })
+    it('says 502 when the exchange is down, and does not remember the failure', async () => {
+      const { port, ex } = await boot()
+      ex.candlesFail = true
+      expect((await get(port, '/api/candles?symbol=BTCUSDT&interval=1m')).status).toBe(502)
+      ex.candlesFail = false
+      expect((await get(port, '/api/candles?symbol=BTCUSDT&interval=1m')).status).toBe(200)
+    })
+  })
 })

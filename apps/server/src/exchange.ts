@@ -1,5 +1,6 @@
 import WebSocket from 'ws'
-import type { DiffEvent, Snapshot } from '@depth/core'
+import { parseKlines } from '@depth/core'
+import type { Candle, DiffEvent, Snapshot } from '@depth/core'
 
 export interface Connection { close(): void }
 
@@ -15,6 +16,8 @@ export interface Exchange {
   connect(symbol: string, handlers: ConnectHandlers): Connection
   /** The whole book as of "now", as one HTTP answer. */
   fetchSnapshot(symbol: string, limit: number): Promise<Snapshot>
+  /** Recent trade candles (oldest first). */
+  fetchCandles(symbol: string, interval: string, limit: number): Promise<Candle[]>
 }
 
 /** The exchange told us to slow down (HTTP 429) or that we were blocked (418). */
@@ -68,6 +71,17 @@ export class BinanceExchange implements Exchange {
       const d = (await res.json()) as Snapshot
       if (typeof d.lastUpdateId !== 'number' || !Array.isArray(d.bids) || !Array.isArray(d.asks)) throw new Error('unexpected snapshot shape')
       return { lastUpdateId: d.lastUpdateId, bids: d.bids, asks: d.asks }
+    } finally { clearTimeout(timer) }
+  }
+
+  async fetchCandles(symbol: string, interval: string, limit: number): Promise<Candle[]> {
+    const ctl = new AbortController()
+    const timer = setTimeout(() => ctl.abort(), this.opts.timeoutMs ?? 10_000)
+    try {
+      const res = await fetch(`${this.opts.restUrl}/api/v3/klines?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&limit=${limit}`, { signal: ctl.signal })
+      if (res.status === 429 || res.status === 418) throw new RateLimited(30_000, res.status)
+      if (!res.ok) throw new Error(`klines HTTP ${res.status}`)
+      return parseKlines(await res.json())
     } finally { clearTimeout(timer) }
   }
 }

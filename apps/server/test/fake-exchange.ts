@@ -1,5 +1,5 @@
 import { OrderBook, SimulatedExchange } from '@depth/core'
-import type { BookFrame, DiffEvent, Snapshot } from '@depth/core'
+import type { BookFrame, Candle, DiffEvent, Snapshot } from '@depth/core'
 import { RateLimited } from '../src/exchange'
 import type { ConnectHandlers, Connection, Exchange } from '../src/exchange'
 
@@ -21,6 +21,8 @@ export class FakeExchange implements Exchange {
   /** the next N snapshots are old (as if they were cached): older than the updates we hold */
   staleNext = 0
   autoOpen = true
+  candleCalls = 0
+  candlesFail = false
   private conn = 0
   private streamStartId = 0
 
@@ -45,6 +47,12 @@ export class FakeExchange implements Exchange {
     if (this.failNext > 0) { this.failNext--; throw new Error('network is down') }
     if (this.staleNext > 0) { this.staleNext--; return this.sim.snapshotAt(Math.max(1, this.streamStartId - 10)) } // older than every update we hold
     return this.sim.snapshotAt(this.sim.lastId)
+  }
+
+  async fetchCandles(_symbol: string, _interval: string, limit: number): Promise<Candle[]> {
+    this.candleCalls++
+    if (this.candlesFail) throw new Error('exchange down')
+    return Array.from({ length: Math.min(limit, 3) }, (_, i) => ({ t: 60_000 * i, o: 100, h: 110, l: 90, c: 105, v: 2 }))
   }
 
   /** `k` new changes on the exchange, delivered to us as one update. */

@@ -3,7 +3,7 @@
 A live 3D view of a crypto order book. Real Binance data, kept provably correct, drawn as terrain you can orbit:
 green ridges are bids (buyers), red ridges are asks (sellers), time runs toward you.
 
-**Phase 3 of 5**: correct live book, 3D terrain, whale walls, and 10-minute replay. Next: 3D candles, alerts.
+**Phase 4 of 5**: correct live book, 3D terrain, whale walls, 10-minute replay, and 3D trade candles (thickness = volume) with whale levels overlaid. Next: alerts.
 
 ## Run it
 

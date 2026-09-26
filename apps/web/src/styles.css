@@ -88,3 +88,10 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .replay.on .when { color: var(--yellow); }
 .replay .go { border-color: var(--yellow); color: var(--yellow); font-size: 12px; }
 @media (max-width: 700px) { .replay { bottom: 118px; } }
+
+.views { display: flex; gap: 4px; }
+.views button { background: transparent; border: 1px solid #2a3550; color: var(--muted); border-radius: 8px; padding: 5px 10px; font-size: 13px; cursor: pointer; }
+.views button.on { color: #fff; border-color: #5b73c9; background: #18213a; }
+.views .sub { padding: 5px 8px; font-size: 12px; }
+.axis { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.replay[hidden] { display: none; }
