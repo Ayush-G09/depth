@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import type { TimelineSample } from '@depth/core'
+import { findWhales } from '@depth/core'
+import type { TimelineSample, Whale } from '@depth/core'
 import type { Stream } from './useBookStream'
 import { SLICES } from './useBookStream'
-import { DEPTH, WIDTH, colOfPrice, fillTerrain, referenceQty, xOfCol, zOfRow } from './terrainMath'
+import { ASK, BID, DEPTH, colOfPrice, fillTerrain, heightOf, referenceQty, xOfCol, zOfRow } from './terrainMath'
 
 /** How the terrain reports what it is drawing, so the HTML labels can line up with it. */
 export interface TerrainInfo { bucket: number; k0: number; cols: number; times: number[] }
@@ -13,7 +14,11 @@ export interface TerrainInfo { bucket: number; k0: number; cols: number; times: 
  * The order book as a landscape: price runs left to right, time runs away from you (now is at the front), and
  * height is how much is resting there: green mountains are bids (buyers), red are asks (sellers).
  */
-export function Terrain({ stream, onSample }: { stream: Stream; onSample?: (s: TimelineSample) => void }) {
+const rgb = (c: readonly number[]) => `rgb(${c.map((x) => Math.round(x * 255)).join(',')})`
+
+export function Terrain({ stream, onSample, onWhales, showWhales = true }: { stream: Stream; onSample?: (s: TimelineSample) => void; onWhales?: (w: Whale[]) => void; showWhales?: boolean }) {
+  const [whales, setWhales] = useState<{ w: Whale; x: number; y: number; z: number }[]>([])
+  const lastWhale = useRef(0)
   const group = useRef<THREE.Group>(null)
   const seen = useRef(-1)
   const ref = useRef(1)
@@ -89,6 +94,14 @@ export function Terrain({ stream, onSample }: { stream: Stream; onSample?: (s: T
     midGeometry.setDrawRange(first < 0 ? 0 : first, first < 0 ? 0 : s.rows - first)
     mp.needsUpdate = true
     onSample?.(s)
+
+    const now = performance.now()
+    if (now - lastWhale.current > 500) {
+      lastWhale.current = now
+      const found = findWhales(s)
+      onWhales?.(found)
+      setWhales(found.map((w) => ({ w, x: xOfCol(w.col, s.cols), y: heightOf(w.side === 'bid' ? s.bids[(s.rows - 1) * s.cols + w.col] : s.asks[(s.rows - 1) * s.cols + w.col], ref.current), z: zOfRow(s.rows - 1, s.rows) })))
+    }
   })
 
   return (
@@ -100,6 +113,22 @@ export function Terrain({ stream, onSample }: { stream: Stream; onSample?: (s: T
         <meshBasicMaterial wireframe color="#7c97f2" transparent opacity={0.05} depthWrite={false} />
       </mesh>
       <primitive object={midLine} />
+      {showWhales && whales.map(({ w, x, y, z }) => {
+        const c = rgb(w.side === 'bid' ? BID : ASK)
+        const r = 0.9 + Math.min(2.6, Math.max(0, Math.log10(w.usd / 250_000)) * 1.6) // bigger order, bigger sphere
+        return (
+          <group key={`${w.side}${w.col}`} position={[x, y + r + 1, z]}>
+            <mesh>
+              <sphereGeometry args={[r, 24, 16]} />
+              <meshStandardMaterial color={c} emissive={c} emissiveIntensity={0.9} roughness={0.3} />
+            </mesh>
+            <mesh>
+              <sphereGeometry args={[r * 1.7, 20, 12]} />
+              <meshBasicMaterial color={c} transparent opacity={0.12} depthWrite={false} />
+            </mesh>
+          </group>
+        )
+      })}
     </group>
   )
 }

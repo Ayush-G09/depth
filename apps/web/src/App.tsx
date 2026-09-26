@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useThree } from '@react-three/fiber'
 import { Grid, Html, OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
-import type { TimelineSample } from '@depth/core'
+import type { TimelineSample, Whale } from '@depth/core'
 import { Terrain } from './Terrain'
 import { DEPTH, WIDTH, priceOfCol, xOfCol, zOfRow } from './terrainMath'
 import { SLICES, STEP_MS, useBookStream } from './useBookStream'
@@ -10,6 +10,7 @@ import { SLICES, STEP_MS, useBookStream } from './useBookStream'
 const DEFAULT_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT']
 
 const fmtPrice = (p: number, bucket: number) => p.toLocaleString('en-US', { minimumFractionDigits: Math.max(0, Math.min(6, -Math.floor(Math.log10(bucket)))), maximumFractionDigits: Math.max(0, Math.min(6, -Math.floor(Math.log10(bucket)))) })
+const fmtUsd = (v: number) => (v >= 1e6 ? `$${(v / 1e6).toFixed(2)}M` : `$${Math.round(v / 1000)}k`)
 const fmtQty = (q: number) => (q >= 1000 ? `${(q / 1000).toFixed(1)}k` : q >= 10 ? q.toFixed(1) : q.toFixed(2))
 const base = (symbol: string) => symbol.replace(/USDT$/, '')
 
@@ -55,6 +56,7 @@ export function App() {
   const stream = useBookStream(symbol)
   const [info, setInfo] = useState<{ bucket: number; k0: number; cols: number } | null>(null)
   const lastInfo = useRef(0)
+  const [whales, setWhales] = useState<Whale[]>([])
 
   useEffect(() => {
     fetch('/api/symbols').then((r) => r.json()).then((d: { symbols: string[] }) => { if (d.symbols?.length) setSymbols(d.symbols) }).catch(() => {})
@@ -89,7 +91,7 @@ export function App() {
         <directionalLight position={[30, 60, 40]} intensity={1.4} />
         <directionalLight position={[-40, 25, -30]} intensity={0.45} color="#7c97f2" />
         <Framing />
-        <Terrain stream={stream} onSample={onSample} />
+        <Terrain stream={stream} onSample={onSample} onWhales={setWhales} showWhales={live} />
         <Grid position={[0, -0.05, 0]} args={[WIDTH * 1.6, DEPTH * 1.6]} cellSize={5} cellThickness={0.5} cellColor="#1a2233" sectionSize={25} sectionThickness={1} sectionColor="#2a3550" fadeDistance={190} fadeStrength={1.5} infiniteGrid={false} />
         <Axes info={info} />
         <OrbitControls enableDamping dampingFactor={0.07} target={[0, 0, -4]} minDistance={22} maxDistance={190} maxPolarAngle={Math.PI * 0.485} />
@@ -104,6 +106,22 @@ export function App() {
         </nav>
         <span className={`pill ${state}`} role="status"><i />{state === 'live' ? 'Live' : state === 'syncing' ? 'Syncing order book…' : stream.link === 'connecting' ? 'Connecting…' : 'Offline, reconnecting…'}</span>
       </header>
+
+      <aside className="whales panel" aria-label="Large resting orders">
+        <h2>Whale walls</h2>
+        {live && whales.length > 0 ? (
+          <ul>
+            {whales.slice(0, 6).map((w) => (
+              <li key={`${w.side}${w.col}`} className={w.side}>
+                <i />
+                <span className="mono">{fmtPrice(w.price, f!.bucket)}</span>
+                <b className="mono">{fmtUsd(w.usd)}</b>
+                <small>{w.age < 2 ? 'new' : `${Math.round((w.age * STEP_MS) / 1000)}s`}</small>
+              </li>
+            ))}
+          </ul>
+        ) : <p className="muted">{live ? 'No unusually large orders right now.' : '—'}</p>}
+      </aside>
 
       <aside className="stats panel" aria-label="Market readout">
         <div className="pair mono">{base(symbol)} / USDT</div>
@@ -123,6 +141,7 @@ export function App() {
         <span><i className="sw g" />Bids (buyers)</span>
         <span><i className="sw r" />Asks (sellers)</span>
         <span><i className="sw y" />Middle price</span>
+        <span><i className="sw o" />Whale wall</span>
         <span className="muted">Height = size resting at that price · time flows away from you</span>
       </footer>
       <p className="hint">Drag to orbit · scroll to zoom · right-drag to pan</p>

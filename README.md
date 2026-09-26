@@ -3,14 +3,14 @@
 A live 3D view of a crypto order book. Real Binance data, kept provably correct, drawn as terrain you can orbit:
 green ridges are bids (buyers), red ridges are asks (sellers), time runs toward you.
 
-**Phase 1 of 5**: correct live book + 3D terrain. Next: whale orders, replay, 3D candles, alerts.
+**Phase 2 of 5**: correct live book, 3D terrain, and whale walls (large resting orders shown as glowing spheres). Next: replay, 3D candles, alerts.
 
 ## Run it
 
 ```bash
 npm install
 npm run dev        # server :3100, web :5190
-npm test           # 129 tests
+npm test           # 137 tests
 ```
 
 ## How it works
@@ -31,7 +31,7 @@ Binance REST (snap) ┘
 
 ## Verification
 
-- 129 unit/property/integration tests, including randomised joins, duplicates and dropped events against a simulator
+- 137 unit/property/integration tests, including randomised joins, duplicates and dropped events against a simulator
   with a known-true book, and a fake exchange for the server.
 - `npx tsx apps/server/scripts/verify-real.mts BTCUSDT` records the real stream, builds the book from two snapshots
   taken at different times, and checks both are identical. Passed for BTC, ETH and SOL.
